@@ -8,6 +8,7 @@ name = "pathfinding"
 path = "src/main.rs"
 
 [dependencies]
+raylib = { version = "5.5.1", features = ["wayland"] }
 
 [lints.rust]
 unused_imports = "allow"

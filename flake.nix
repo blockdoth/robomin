@@ -33,8 +33,21 @@
             packages = with pkgs; [
               toolchain
               rust-analyzer-unwrapped
-              mprocs
+              cmake
+              glfw
+              wayland
+              clang
             ];
+            
+            LD_LIBRARY_PATH = with pkgs; lib.makeLibraryPath [
+              libGL
+              xorg.libXrandr
+              xorg.libXinerama
+              xorg.libXcursor
+              xorg.libXi
+            ];
+            LIBCLANG_PATH = "${pkgs.libclang.lib}/lib";
+
             RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
           };
 
@@ -45,7 +58,10 @@
             cargoLock.lockFile = ./Cargo.lock;
             cargoToml = ./Cargo.toml;
             release = true;
-            nativeBuildInputs = [ toolchain ];
+            nativeBuildInputs = with pkgs; [ 
+              cmake
+              toolchain 
+            ];
           };
         };
     };
