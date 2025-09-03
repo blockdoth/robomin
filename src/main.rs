@@ -11,17 +11,34 @@ struct Stats {
 }
 struct State {
   stats: Stats,
-  h_cells:usize,
-  v_cells:usize
+  grid: Vec<Vec<Cell>>,
+  v_grid:usize,
+  h_grid:usize,
 }
+
+#[derive(Clone)]
+enum CellTyp {
+  START,
+  END,
+  WALL,
+  BACKGROUND,
+}
+
+#[derive(Clone)]
+struct Cell {
+  typ: CellTyp
+}
+
+
 
 const FPS:f64 = 60.0;
 const TICKRATE:f64 = 60.0;
 const SMOOTHING: f64 = 0.9;
+const CELL_COUNT:usize = 100;
 
 fn main() {
     let (mut rlhandle, thread) = raylib::init()
-        .size(1000, 1000)
+        .size(600, 600)
         // .title("Hello, World")
         // .resizable()
         .build();
@@ -31,6 +48,23 @@ fn main() {
     let time_per_tick = Duration::from_secs_f64(1.0 / (TICKRATE as f64));
     println!("{:?}",time_per_frame);
 
+
+    let mut grid = vec![
+        vec![
+            Cell {
+                typ: CellTyp::BACKGROUND,
+            };
+            CELL_COUNT
+        ];
+        CELL_COUNT
+    ];
+      
+    grid[12][12] = Cell { typ: CellTyp::START };
+    grid[95][80] = Cell { typ: CellTyp::END };
+
+
+
+    
     let mut state = State {
         stats: Stats { 
           fps: FPS,
@@ -38,8 +72,9 @@ fn main() {
           last_frame: Instant::now(),
           last_tick: Instant::now(),
         },
-        h_cells: 500,
-        v_cells: 500,
+        grid: grid,
+        v_grid: CELL_COUNT,
+        h_grid: CELL_COUNT,
     };
 
     while !rlhandle.window_should_close() {
@@ -67,19 +102,28 @@ fn main() {
 
 fn draw(handle: &mut RaylibHandle, thread: &RaylibThread, state: &State) {
   let mut d = handle.begin_drawing(&thread);
-  let text = format!("FPS: {}\nTPS: {}", state.stats.fps.round() as i64, state.stats.tps.round() as i64);
-  // d.clear_background(Color::WHITE);
-  d.draw_text(&text, 12, 12, 20, Color::BLACK);
-
+  d.clear_background(Color::WHITE);
+  
   let height= d.get_screen_height();
   let width = d.get_screen_width();
-  let cell_size = min(width / (state.h_cells as i32), width / (state.v_cells as i32));
+  let cell_size = min(width / (state.h_grid as i32), width / (state.v_grid as i32));
+  
+  for (y,row) in state.grid.iter().enumerate() {
+    for (x,cell) in row.iter().enumerate() {
+      
+      let color = match cell.typ {
+        CellTyp::START => Color::BLUE,
+        CellTyp::END => Color::RED,
+        CellTyp::WALL => Color::BLACK,
+        CellTyp::BACKGROUND => Color::GRAY,
+      };
 
-  for y in 0..state.v_cells {
-    for x in 0..state.h_cells {
-      d.draw_rectangle((x as  i32) * cell_size, (y as i32) * cell_size, cell_size - 1, cell_size - 1 , Color::GRAY);
+      d.draw_rectangle((x as  i32) * cell_size, (y as i32) * cell_size, cell_size - 1, cell_size - 1 , color);
     }
   }
+
+  let text = format!("FPS: {}\nTPS: {}", state.stats.fps.round() as i64, state.stats.tps.round() as i64);
+  d.draw_text(&text, 12, 12, 20, Color::BLACK);
 
 }
 
