@@ -8,6 +8,8 @@ name = "pathfinding"
 path = "src/main.rs"
 
 [dependencies]
+ordered-float = "5.0.0"
+rand = "0.9.2"
 raylib = { version = "5.5.1", features = ["wayland", "sdl"] }
 
 [lints.rust]
