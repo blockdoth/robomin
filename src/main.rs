@@ -106,7 +106,7 @@ impl Grid {
     }
 }
 
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq)]
 enum CellTyp {
     Start,
     End,
@@ -265,7 +265,9 @@ fn tick(state: &mut State) {
             while let Some(prev_cell) = state.traversal.predecessors.get(&prev)
                 && prev != state.traversal.start
             {
-                state.grid.cells[*prev_cell].typ = CellTyp::Path;
+                if state.grid.cells[*prev_cell].typ == CellTyp::Background {
+                  state.grid.cells[*prev_cell].typ = CellTyp::Path;
+                }
                 prev = *prev_cell;
             }
             println!("No path found");
