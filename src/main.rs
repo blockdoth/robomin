@@ -24,8 +24,8 @@ struct Stats {
 }
 struct State {
     stats: Stats,
-    grid: Grid,
     traversal: Traversal,
+    world: World,
 }
 
 struct Traversal {
@@ -105,6 +105,36 @@ impl Grid {
         neighbors
     }
 }
+
+
+struct World {
+  obstacles: Vec<Obstacle>,
+  navmesh: Navmesh,
+}
+
+struct Obstacle {
+  x: usize,
+  y: usize,
+  size: usize,
+}
+
+
+struct Navmesh {
+
+}
+
+struct Traingle {
+  corner_1: Coord,
+  corner_2: Coord,
+  corner_3: Coord,
+  
+}
+
+struct Coord {
+  x: i64,
+  y: i64,
+}
+
 
 #[derive(Clone, Debug, Hash, PartialEq)]
 enum CellTyp {
