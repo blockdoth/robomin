@@ -1,9 +1,14 @@
+mod drawing;
+mod navmesh;
+mod stats;
+mod world;
+
 use std::{
     cell,
-    cmp::{Reverse, min},
-    collections::HashMap,
+    cmp::{min, Reverse},
+    collections::{hash_set, HashMap},
     f64,
-    hash::Hash,
+    hash::{Hash, Hasher},
     iter::Map,
     os::unix::thread,
     time::{Duration, Instant},
@@ -12,327 +17,202 @@ use std::{
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
+use log::LevelFilter;
 use ordered_float::NotNan;
 use rand::Rng;
-use raylib::prelude::*;
+use raylib::{ffi::{Mesh, Model}, prelude::*};
+use simplelog::{Config, SimpleLogger};
 
-struct Stats {
-    fps: f64,
-    tps: f64,
-    last_frame: Instant,
-    last_tick: Instant,
-}
+use crate::{drawing::draw::draw, navmesh::Triangle, world::{Bot, Obstacle}};
+use crate::stats::Stats;
+use crate::{drawing::draw::DisplayInfo, navmesh::Navmesh, world::World};
+
 struct State {
-    stats: Stats,
-    traversal: Traversal,
-    world: World,
-}
-
-struct Traversal {
-    open: BinaryHeap<(Reverse<NotNan<f64>>, usize)>,
-    start: usize,
-    end: usize,
-    predecessors: HashMap<usize, usize>,
-}
-#[derive(Clone, Debug)]
-struct Grid {
-    cells: Vec<Cell>,
-    rows: usize,
-    columns: usize,
-}
-
-impl Grid {
-    fn init(columns: usize, rows: usize) -> Self {
-        let mut rng = rand::rng();
-
-        let mut cells = Vec::with_capacity(columns * rows);
-        for y in 0..rows {
-            for x in 0..columns {
-                let wall = rng.random_bool(WALL_CHANGE);
-                cells.push(Cell {
-                    typ: if wall {
-                        CellTyp::Wall
-                    } else {
-                        CellTyp::Background
-                    },
-                    x,
-                    y,
-                    f: 0.0,
-                    g: if wall { 0.0 } else { f64::INFINITY },
-                    h: 0.0,
-                });
-            }
-        }
-
-        Grid {
-            cells,
-            rows,
-            columns,
-        }
-    }
-
-    fn idx(&self, x: usize, y: usize) -> usize {
-        y * self.columns + x
-    }
-
-    fn get(&self, x: usize, y: usize) -> &Cell {
-        &self.cells[y * self.columns + x]
-    }
-    fn set(&mut self, x: usize, y: usize, typ: CellTyp) -> usize {
-        let idx = self.idx(x, y);
-        self.cells[idx].typ = typ;
-        idx
-    }
-
-    fn neighbours(&self, x: usize, y: usize) -> Vec<usize> {
-        let mut neighbors = vec![];
-
-        for dy in -1..=1 {
-            for dx in -1..=1 {
-                if dx == 0 && dy == 0 {
-                    continue;
-                }
-
-                let nx = x as isize + dx;
-                let ny = y as isize + dy;
-
-                if nx >= 0 && ny >= 0 && (nx as usize) < self.columns && (ny as usize) < self.rows {
-                    neighbors.push(self.idx(nx as usize, ny as usize));
-                }
-            }
-        }
-
-        neighbors
-    }
-}
-
-
-struct World {
-  obstacles: Vec<Obstacle>,
-  navmesh: Navmesh,
-}
-
-struct Obstacle {
-  x: usize,
-  y: usize,
-  size: usize,
-}
-
-
-struct Navmesh {
-
-}
-
-struct Traingle {
-  corner_1: Coord,
-  corner_2: Coord,
-  corner_3: Coord,
-  
-}
-
-struct Coord {
-  x: i64,
-  y: i64,
-}
-
-
-#[derive(Clone, Debug, Hash, PartialEq)]
-enum CellTyp {
-    Start,
-    End,
-    Path,
-    Wall,
-    Background,
-}
-
-#[derive(Clone, Debug)]
-struct Cell {
-    typ: CellTyp,
-    x: usize,
-    y: usize,
-    g: f64,
-    h: f64,
-    f: f64,
-}
-
-impl Hash for Cell {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.x.hash(state);
-        self.y.hash(state);
-    }
-}
-
-impl Eq for Cell {}
-
-impl PartialEq for Cell {
-    fn eq(&self, other: &Self) -> bool {
-        self.x == other.x && self.y == other.y
-    }
-}
-
-impl PartialOrd for Cell {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Cell {
-    fn cmp(&self, other: &Self) -> Ordering {
-        other.f.partial_cmp(&self.f).unwrap_or(Ordering::Equal)
-    }
+    pub stats: Stats,
+    pub display: DisplayInfo,
+    pub world: World,
 }
 
 const FPS: f64 = 60.0;
 const TICKRATE: f64 = 60.0;
 const SMOOTHING: f64 = 0.9;
 const CELL_COUNT: usize = 50;
-const WALL_CHANGE: f64 = 0.5;
+
 fn main() {
-    let (mut rlhandle, thread) = raylib::init()
-        .size(800, 800)
-        .build();
+    let _ = SimpleLogger::init(LevelFilter::Info, Config::default());
 
-    let time_per_frame = Duration::from_secs_f64(1.0 / FPS);
-    let time_per_tick = Duration::from_secs_f64(1.0 / TICKRATE);
+    let initial_width = 800;
+    let initial_height = 800;
 
-    let mut grid = Grid::init(CELL_COUNT, CELL_COUNT);
+    let (mut rlhandle, thread) = raylib::init().size(initial_width, initial_height).build();
 
-    let startcell = grid.set(5, 3, CellTyp::Start);
-    let endcell = grid.set(45, 48, CellTyp::End);
+
+    let nodes = vec![
+      Triangle { 
+        id: 0, 
+        corner_1: Vector3 { 
+          x: 10.0, 
+          y: 0.0, 
+          z: 0.0, 
+        }, 
+        corner_2: Vector3 { 
+          x: 10.0, 
+          y: 0.0, 
+          z: 10.0,           
+        }, 
+        corner_3: Vector3 { 
+          x: 0.0, 
+          y: 0.0, 
+          z: 10.0, 
+        } 
+      },
+      Triangle { 
+        id: 0, 
+        corner_1: Vector3 { 
+          x: 10.0, 
+          y: 0.0, 
+          z: 0.0, 
+        }, 
+        corner_2: Vector3 { 
+          x: 0.0, 
+          y: 0.0, 
+          z: 0.0,           
+        }, 
+        corner_3: Vector3 { 
+          x: 0.0, 
+          y: 0.0, 
+          z: 10.0,           
+        } 
+      },       
+    ];
+
 
     let mut state = State {
+        world: World {
+            bot: Bot {
+                pos: Vector3 { 
+                  x: 0.0, 
+                  y: 0.25, 
+                  z: 0.0 
+                },
+                size: Vector3 { 
+                  x: 1.0, 
+                  y: 0.5, 
+                  z: 1.3 
+                },
+            },
+            obstacles: vec![
+              Obstacle { 
+                pos: Vector3 { 
+                  x: 5.0, 
+                  y: 0.5, 
+                  z: 5.0 
+                }, 
+                size: Vector3 { 
+                  x: 1.0, 
+                  y: 1.0, 
+                  z: 1.0 
+                } 
+              }
+            ],
+            navmesh: Navmesh {
+                nodes: nodes,
+                edges: vec![],
+            },
+        },
+        display: DisplayInfo {
+            screen_height: initial_height,
+            screen_width: initial_width,
+            cam_angle: 0.0,
+            cam_radius: 0.0,
+            camera: Camera3D::perspective(
+                Vector3 {
+                    x: 0.0,
+                    y: 40.0,
+                    z: 00.0,
+                },
+                Vector3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Vector3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+                45.0,
+            ),
+        },
         stats: Stats {
             fps: FPS,
             tps: TICKRATE,
             last_frame: Instant::now(),
             last_tick: Instant::now(),
         },
-        grid,
-        traversal: Traversal {
-            start: startcell,
-            end: endcell,
-            open: BinaryHeap::new(),
-            predecessors: HashMap::new(),
-        },
     };
+    state.display.cam_radius = state.display.camera.position.length();
 
-    let start_cell = &mut state.grid.cells[startcell];
-    start_cell.g = 0.0;
-    start_cell.h = euclidean(start_cell.x, start_cell.y, 45, 48);
-    start_cell.f = start_cell.g + start_cell.h;
-
-    state
-        .traversal
-        .open
-        .push((Reverse(NotNan::new(start_cell.f).unwrap()), startcell));
+    let time_per_frame = Duration::from_secs_f64(1.0 / FPS);
+    let time_per_tick = Duration::from_secs_f64(1.0 / TICKRATE);
 
     while !rlhandle.window_should_close() {
         let now = Instant::now();
-
+        
+        // Handle updates
         if now.duration_since(state.stats.last_tick) >= time_per_tick {
-            let delta = now.duration_since(state.stats.last_tick).as_secs_f64();
-            let instant_tps = 1.0 / delta;
-            state.stats.tps = SMOOTHING * state.stats.tps + (1.0 - SMOOTHING) * instant_tps;
-            tick(&mut state);
-            state.stats.last_tick = now;
-        }
+          let delta = now.duration_since(state.stats.last_tick).as_secs_f64();
+          let instant_tps = 1.0 / delta;
+          state.stats.tps = SMOOTHING * state.stats.tps + (1.0 - SMOOTHING) * instant_tps;
 
+          tick(&mut rlhandle, &mut state);
+          
+          
+
+          state.stats.last_tick = now;
+        }
+        
+        // Draw updates
         if now.duration_since(state.stats.last_frame) >= time_per_frame {
             let delta = now.duration_since(state.stats.last_frame).as_secs_f64();
             let instant_fps = 1.0 / delta;
             state.stats.fps = SMOOTHING * state.stats.fps + (1.0 - SMOOTHING) * instant_fps;
-            draw(&mut rlhandle, &thread, &state);
+
+            // TODO figure out where to place this
+        
+            draw(&mut rlhandle.begin_drawing(&thread), &state);
+            
             state.stats.last_frame = now;
         }
     }
 }
 
-fn draw(handle: &mut RaylibHandle, thread: &RaylibThread, state: &State) {
-    let mut d = handle.begin_drawing(thread);
-    d.clear_background(Color::WHITE);
+fn tick(h: &mut RaylibHandle, state: &mut State) {
 
-    let height = d.get_screen_height();
-    let width = d.get_screen_width();
-    let cell_size = min(
-        width / (state.grid.columns as i32),
-        height / (state.grid.rows as i32),
-    );
 
-    for cell in &state.grid.cells {
-        let color = match cell.typ {
-            CellTyp::Start => Color::BLUE,
-            CellTyp::End => Color::RED,
-            CellTyp::Wall => Color::BLACK,
-            CellTyp::Background => Color::GRAY,
-            CellTyp::Path => Color::GREEN,
-        };
-
-        d.draw_rectangle(
-            (cell.x as i32) * cell_size,
-            (cell.y as i32) * cell_size,
-            cell_size - 1,
-            cell_size - 1,
-            color,
-        );
+    if h.is_key_down(KeyboardKey::KEY_UP) {
+      state.display.camera.position.scale(1.1);
+      state.display.cam_radius += 0.5;
+    }
+    
+    if h.is_key_down(KeyboardKey::KEY_DOWN) {
+      state.display.camera.position.scale(0.9);
+      state.display.cam_radius -= 0.5;
     }
 
-    // let text = format!(
-    //     "FPS: {}\nTPS: {}",
-    //     state.stats.fps.round() as i64,
-    //     state.stats.tps.round() as i64
-    // );
-    // d.draw_text(&text, 12, 12, 20, Color::BLACK);
-}
-
-fn tick(state: &mut State) {
-    let end_x = state.grid.cells[state.traversal.end].x;
-    let end_y = state.grid.cells[state.traversal.end].y;
-    while let Some((_, parent_idx)) = state.traversal.open.pop() {
-        if parent_idx == state.traversal.end {
-            println!("Found end");
-
-            let mut prev = state.traversal.end;
-            while let Some(prev_cell) = state.traversal.predecessors.get(&prev)
-                && prev != state.traversal.start
-            {
-                if state.grid.cells[*prev_cell].typ == CellTyp::Background {
-                  state.grid.cells[*prev_cell].typ = CellTyp::Path;
-                }
-                prev = *prev_cell;
-            }
-            println!("No path found");
-
-            break;
-        }
-        let parent_cell = &state.grid.cells[parent_idx];
-        let neighbours = state.grid.neighbours(parent_cell.x, parent_cell.y);
-
-        let possible_new_g = parent_cell.g + 1.0;
-
-        for neighbour_idx in neighbours {
-            let neighbour = &mut state.grid.cells[neighbour_idx];
-
-            if possible_new_g < neighbour.g {
-                neighbour.g = possible_new_g;
-                neighbour.h = euclidean(neighbour.x, neighbour.y, end_x, end_y);
-                neighbour.f = neighbour.g + neighbour.h;
-
-                state
-                    .traversal
-                    .predecessors
-                    .insert(neighbour_idx, parent_idx);
-
-                state
-                    .traversal
-                    .open
-                    .push((Reverse(NotNan::new(neighbour.f).unwrap()), neighbour_idx));
-            }
-        }
+    if h.is_key_down(KeyboardKey::KEY_LEFT) {
+        state.display.cam_angle += 0.02;
     }
-}
+    if h.is_key_down(KeyboardKey::KEY_RIGHT) {
+        state.display.cam_angle -= 0.02;
+    }
 
-fn euclidean(x1: usize, y1: usize, x2: usize, y2: usize) -> f64 {
-    let dx = x1 as f64 - x2 as f64;
-    let dy = y1 as f64 - y2 as f64;
-    (dx * dx + dy * dy).sqrt()
+    state.display.camera.position.x = state.display.camera.target.x + state.display.cam_angle.cos() * state.display.cam_radius;
+    state.display.camera.position.z = state.display.camera.target.z + state.display.cam_angle.sin() * state.display.cam_radius;
+    state.display.camera.position.y = state.display.camera.target.y + 5.0;
+
+
+    state.display.screen_height = h.get_screen_height();
+    state.display.screen_width = h.get_screen_width();        
+
 }
