@@ -1,2 +1,2 @@
-pub mod rlgl;
 pub mod draw;
+pub mod rlgl;
