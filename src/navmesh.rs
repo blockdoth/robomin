@@ -4,6 +4,8 @@ use std::collections::{BinaryHeap, HashMap};
 use ordered_float::NotNan;
 use raylib::math::Vector3;
 
+use crate::world::World;
+
 pub struct Navmesh {
     pub nodes: Vec<Triangle>,
     pub edges: Vec<(u64, u64)>,

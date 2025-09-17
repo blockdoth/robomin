@@ -37,26 +37,93 @@ fn draw_world(h: &mut Raylib3DHandle, state: &State) {
 
     let size = Vector3 { x: 1.0, y: 0.5, z: 1.3 };
 
-    let points: Vec<Vector3> = state
-        .world
-        .navmesh
-        .nodes
-        .iter()
-        .flat_map(|f| [f.corner_1, f.corner_2, f.corner_3])
-        .collect();
+    // h.draw_grid(100, 1.0);
 
-    h.draw_triangle_strip3D(&points, NAVMESH_COLOR);
-    h.draw_triangle_strip3D_wires(&points, NAVMESH_COLOR);
+    for window in state.world.border.windows(2) {
+        h.draw_line_3D(window[0], window[1], Color::PINK);
+    }
 
+    if let (Some(first), Some(last)) = (state.world.border.first(), state.world.border.last()) {
+        h.draw_line_3D(*last, *first, Color::PINK);
+    }
+
+    if let Some(navmesh) = &state.world.navmesh {
+        let triangles: Vec<Vector3> = navmesh.nodes.iter().flat_map(|f| [f.corner_1, f.corner_2, f.corner_3]).collect();
+
+        h.draw_triangle_strip3D(&triangles, NAVMESH_COLOR);
+        h.draw_triangle_strip3D_wires(&triangles, NAVMESH_COLOR);
+    }
+
+    let obstacle_margin = state.world.obstacle_margin;
     for obstacle in &state.world.obstacles {
+        let obstacle_width = obstacle.size.x;
+        let obstacle_length = obstacle.size.z;
+        let line_height = -obstacle.pos.y;
+        let points = vec![
+            // Side 1
+            obstacle.pos
+                + Vector3 {
+                    x: obstacle_width + obstacle_margin,
+                    y: line_height,
+                    z: obstacle_length + obstacle_margin,
+                },
+            obstacle.pos
+                + Vector3 {
+                    x: obstacle_width + obstacle_margin,
+                    y: line_height,
+                    z: -obstacle_length - obstacle_margin,
+                },
+            // Side 2
+            obstacle.pos
+                + Vector3 {
+                    x: obstacle_width + obstacle_margin,
+                    y: line_height,
+                    z: -obstacle_length - obstacle_margin,
+                },
+            obstacle.pos
+                + Vector3 {
+                    x: -obstacle_width - obstacle_margin,
+                    y: line_height,
+                    z: -obstacle_length - obstacle_margin,
+                },
+            // Side 3
+            obstacle.pos
+                + Vector3 {
+                    x: -obstacle_width - obstacle_margin,
+                    y: line_height,
+                    z: -obstacle_length - obstacle_margin,
+                },
+            obstacle.pos
+                + Vector3 {
+                    x: -obstacle_width - obstacle_margin,
+                    y: line_height,
+                    z: obstacle_length + obstacle_margin,
+                },
+            // Side 4
+            obstacle.pos
+                + Vector3 {
+                    x: -obstacle_width - obstacle_margin,
+                    y: line_height,
+                    z: obstacle_length + obstacle_margin,
+                },
+            obstacle.pos
+                + Vector3 {
+                    x: obstacle_width + obstacle_margin,
+                    y: line_height,
+                    z: obstacle_length + obstacle_margin,
+                },
+        ];
+        // Draw obstacle border
+        for window in points.windows(2) {
+            h.draw_line_3D(window[0], window[1], Color::PINK);
+        }
+
         h.draw_cube_v(obstacle.pos, obstacle.size, Color::RED);
         h.draw_cube_wires_v(obstacle.pos, obstacle.size, Color::BLACK);
     }
 
     h.draw_cube_v(state.world.bot.pos, state.world.bot.size, Color::GREEN);
     h.draw_cube_wires_v(state.world.bot.pos, state.world.bot.size, Color::BLACK);
-
-    h.draw_grid(100, 1.0);
 }
 
 fn draw_ui(h: &mut RaylibDrawHandle<'_>, state: &State) {

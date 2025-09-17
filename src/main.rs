@@ -42,20 +42,20 @@ fn main() {
 
     let (mut rlhandle, thread) = raylib::init().size(initial_width, initial_height).build();
 
-    let nodes = vec![
-        Triangle {
-            id: 0,
-            corner_1: Vector3 { x: 10.0, y: 0.0, z: 0.0 },
-            corner_2: Vector3 { x: 10.0, y: 0.0, z: 10.0 },
-            corner_3: Vector3 { x: 0.0, y: 0.0, z: 10.0 },
-        },
-        Triangle {
-            id: 0,
-            corner_1: Vector3 { x: 10.0, y: 0.0, z: 0.0 },
-            corner_2: Vector3 { x: 0.0, y: 0.0, z: 0.0 },
-            corner_3: Vector3 { x: 0.0, y: 0.0, z: 10.0 },
-        },
-    ];
+    // let nodes = vec![
+    // Triangle {
+    //     id: 0,
+    //     corner_1: Vector3 { x: 10.0, y: 0.0, z: 0.0 },
+    //     corner_2: Vector3 { x: 10.0, y: 0.0, z: 10.0 },
+    //     corner_3: Vector3 { x: 0.0, y: 0.0, z: 10.0 },
+    // },
+    // Triangle {
+    //     id: 0,
+    //     corner_1: Vector3 { x: 10.0, y: 0.0, z: 0.0 },
+    //     corner_2: Vector3 { x: 0.0, y: 0.0, z: 0.0 },
+    //     corner_3: Vector3 { x: 0.0, y: 0.0, z: 10.0 },
+    // },
+    // ];
 
     let mut state = State {
         world: World {
@@ -67,7 +67,15 @@ fn main() {
                 pos: Vector3 { x: 5.0, y: 0.5, z: 5.0 },
                 size: Vector3 { x: 1.0, y: 1.0, z: 1.0 },
             }],
-            navmesh: Navmesh { nodes, edges: vec![] },
+            navmesh: None,
+            border_margin: 0.5,
+            obstacle_margin: 0.5,
+            border: vec![
+                Vector3 { x: 10.0, y: 0.0, z: 10.0 },
+                Vector3 { x: 10.0, y: 0.0, z: -10.0 },
+                Vector3 { x: -10.0, y: 0.0, z: -10.0 },
+                Vector3 { x: -10.0, y: 0.0, z: 10.0 },
+            ],
         },
         display: DisplayInfo {
             screen_height: initial_height,
@@ -143,16 +151,13 @@ fn handle_input(h: &mut RaylibHandle, state: &mut State) {
 }
 
 fn tick(h: &mut RaylibHandle, state: &mut State) {
-  update_camera(state);
-  state.display.screen_height = h.get_screen_height();
-  state.display.screen_width = h.get_screen_width();  
-
-
+    update_camera(state);
+    state.display.screen_height = h.get_screen_height();
+    state.display.screen_width = h.get_screen_width();
 }
 
 fn update_camera(state: &mut State) {
     state.display.camera.position.x = state.display.camera.target.x + state.display.cam_angle.cos() * state.display.cam_radius;
     state.display.camera.position.z = state.display.camera.target.z + state.display.cam_angle.sin() * state.display.cam_radius;
     state.display.camera.position.y = state.display.camera.target.y + 5.0;
-
 }
